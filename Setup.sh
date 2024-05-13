@@ -247,7 +247,7 @@ echo "${reset}"
 sleep 1s
 
 
-sudo add-apt-repository -y ppa:ondrej/nginx
+sudo add-apt-repository -y ppa:ondrej/php
 sudo apt-get update
 
 sudo apt-get -y install php$VERSIONPHP-fpm
@@ -326,13 +326,14 @@ sleep 1s
 
 NGINX=/etc/nginx/sites-available/default
 if test -f "$NGINX"; then
-    sudo unlink NGINX
+    sudo unlink $NGINX
 fi
 sudo touch $NGINX
 sudo cat > "$NGINX" <<EOF
 server {
-    listen 80 $DOMAIN;
-    listen [::]:80 $DOMAIN;
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    server_name $DOMAIN
     root /var/www/html;
     add_header X-Frame-Options "SAMEORIGIN";
     add_header X-XSS-Protection "1; mode=block";
@@ -517,7 +518,7 @@ echo " SSH root pass: $PASS"
 echo " MySQL root user: $USERNAME"
 echo " MySQL root pass: $DBPASS"
 echo ""
-echo " To manage your server visit: http://$IP"
+echo " Sayfay görüntülemek için: http://$DOMAIN"
 echo ""
 echo "***********************************************************"
 echo "             Bu bilgileri kaydetmeyi unutmayın!            "
