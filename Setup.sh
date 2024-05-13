@@ -333,7 +333,7 @@ sudo cat > "$NGINX" <<EOF
 server {
     listen 80 default_server;
     listen [::]:80 default_server;
-    server_name $DOMAIN
+    server_name $DOMAIN;
     root /var/www/html;
     add_header X-Frame-Options "SAMEORIGIN";
     add_header X-XSS-Protection "1; mode=block";
