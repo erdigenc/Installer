@@ -49,13 +49,66 @@ echo ""
 echo "Yükleme işlemleri başlıyor lütfen bekleyin.!"
 echo "${reset}"
 sleep 3s
-TITLE="Kullanıcı Adı Seçimi"
-TEXT="Proje için bir kullanıcı oluşturulacaktır, lütfen kullanıcı adını giriniz (örn. projeadi):"
-USERNAME=$(dialog --backtitle "Kullanıcı Adı Seçimi" --title "$TITLE" --inputbox "$TEXT" 10 50 3>&1 1>&2 2>&3)
+
+# OS CHECK
+clear
+clear
+echo "${bggreen}${black}${bold}"
+echo "İşletim sistemi kontrol ediliyor..."
+echo "${reset}"
+sleep 1s
+
+ID=$(grep -oP '(?<=^ID=).+' /etc/os-release | tr -d '"')
+VERSION=$(grep -oP '(?<=^VERSION_ID=).+' /etc/os-release | tr -d '"')
+if [ "$ID" = "ubuntu" ]; then
+    case $VERSION in
+        22.04)
+            break
+            ;;
+        *)
+            echo "${bgred}${white}${bold}"
+            echo "Yeğitek kurulum aracı Linux Ubuntu 22.04 LTS ile çalışmaktadır."
+            echo "${reset}"
+            exit 1;
+            break
+            ;;
+    esac
+else
+    echo "${bgred}${white}${bold}"
+    echo "Yeğitek kurulum aracı Linux Ubuntu 22.04 LTS ile çalışmaktadır."
+    echo "${reset}"
+    exit 1
+fi
+
+
+
+# ROOT CHECK
+clear
+clear
+echo "${bggreen}${black}${bold}"
+echo "İzin kontrolleri gerçekleştiriliyor..."
+echo "${reset}"
+sleep 1s
+
+if [ "$(id -u)" = "0" ]; then
+    clear
+else
+    clear
+    echo "${bgred}${white}${bold}"
+    echo "Yeğitek kurulum aracını root olarak çalıştırmanız gerekmektedir."
+    echo "${reset}"
+    exit 1
+fi
+
+
+
 
 sudo apt-get update
 sudo apt -y install dialog
 
+TITLE="Kullanıcı Adı Seçimi"
+TEXT="Proje için bir kullanıcı oluşturulacaktır, lütfen kullanıcı adını giriniz (örn. projeadi):"
+USERNAME=$(dialog --backtitle "Kullanıcı Adı Seçimi" --title "$TITLE" --inputbox "$TEXT" 10 50 3>&1 1>&2 2>&3)
 #!/bin/bash
 
 ACTIVENGINX=0
@@ -117,57 +170,6 @@ else
 fi
 
 
-
-
-# OS CHECK
-clear
-clear
-echo "${bggreen}${black}${bold}"
-echo "İşletim sistemi kontrol ediliyor..."
-echo "${reset}"
-sleep 1s
-
-ID=$(grep -oP '(?<=^ID=).+' /etc/os-release | tr -d '"')
-VERSION=$(grep -oP '(?<=^VERSION_ID=).+' /etc/os-release | tr -d '"')
-if [ "$ID" = "ubuntu" ]; then
-    case $VERSION in
-        22.04)
-            break
-            ;;
-        *)
-            echo "${bgred}${white}${bold}"
-            echo "Yeğitek kurulum aracı Linux Ubuntu 22.04 LTS ile çalışmaktadır."
-            echo "${reset}"
-            exit 1;
-            break
-            ;;
-    esac
-else
-    echo "${bgred}${white}${bold}"
-    echo "Yeğitek kurulum aracı Linux Ubuntu 22.04 LTS ile çalışmaktadır."
-    echo "${reset}"
-    exit 1
-fi
-
-
-
-# ROOT CHECK
-clear
-clear
-echo "${bggreen}${black}${bold}"
-echo "İzin kontrolleri gerçekleştiriliyor..."
-echo "${reset}"
-sleep 1s
-
-if [ "$(id -u)" = "0" ]; then
-    clear
-else
-    clear
-    echo "${bgred}${white}${bold}"
-    echo "Yeğitek kurulum aracını root olarak çalıştırmanız gerekmektedir."
-    echo "${reset}"
-    exit 1
-fi
 
 
 
@@ -283,6 +285,106 @@ sudo systemctl start nginx.service
 sudo rpl -i -w "http {" "http { limit_req_zone \$binary_remote_addr zone=one:10m rate=1r/s; fastcgi_read_timeout 300;" /etc/nginx/nginx.conf
 sudo rpl -i -w "http {" "http { limit_req_zone \$binary_remote_addr zone=one:10m rate=1r/s; fastcgi_read_timeout 300;" /etc/nginx/nginx.conf
 sudo systemctl enable nginx.service
+# DEFAULT VHOST
+clear
+echo "${bggreen}${black}${bold}"
+echo "Vhost ayarlanıyor..."
+echo "${reset}"
+sleep 1s
+
+NGINX=/etc/nginx/sites-available/default
+if test -f "$NGINX"; then
+    sudo unlink $NGINX
+fi
+sudo touch $NGINX
+sudo cat > "$NGINX" <<EOF
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    server_name $DOMAIN;
+    root /var/www/html;
+    add_header X-Frame-Options "SAMEORIGIN";
+    add_header X-XSS-Protection "1; mode=block";
+    add_header X-Content-Type-Options "nosniff";
+    client_body_timeout 10s;
+    client_header_timeout 10s;
+    client_max_body_size 256M;
+    index index.html index.php;
+    charset utf-8;
+    server_tokens off;
+    location / {
+        try_files   \$uri     \$uri/  /index.php?\$query_string;
+    }
+    location = /favicon.ico { access_log off; log_not_found off; }
+    location = /robots.txt  { access_log off; log_not_found off; }
+    error_page 404 /index.php;
+    location ~ \.php$ {
+        include snippets/fastcgi-php.conf;
+        fastcgi_pass unix:/var/run/php/$VERSIONPHP-fpm.sock;
+    }
+    location ~ /\.(?!well-known).* {
+        deny all;
+    }
+}
+EOF
+sudo mkdir /etc/nginx/$USERNAME/
+sudo systemctl restart nginx.service
+sudo chown www-data:$USERNAME -R /var/www/html
+sudo chmod -R 750 /var/www/html
+#ŞABLON YÜKLENİYOR
+clear
+echo "${bggreen}${black}${bold}"
+echo "Şablon yükleniyor..."
+echo "${reset}"
+sleep 1s
+WEBPATH=/var/www/html/index.html
+if test -f "$WEBPATH"; then
+    sudo unlink WEBPATH
+fi
+sudo touch $WEBPATH
+sudo cat > "$WEBPATH" <<EOF
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YEĞİTEK</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            background-color: #f0f0f0;
+        }
+        .logo {
+            font-size: 100px;
+            font-weight: bold;
+            color: #333;
+            margin-top: 100px;
+        }
+        .status {
+            font-size: 50px;
+            color: #666;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="logo">
+        T.C. <br>
+        Milli Eğitim Bakanlığı<br>
+        Yenilik ve Eğitim Teknolojileri<br>
+        Genel Müdürlüğü
+    </div>
+    <div class="status">
+        <br>
+        <br>
+        <br>
+        Bu proje yapım aşamasındadır.
+    </div>
+</body>
+</html>
+
+EOF
 else
     clear
 fi
@@ -386,106 +488,7 @@ php composer-setup.php --no-interaction
 php -r "unlink('composer-setup.php');"
 mv composer.phar /usr/local/bin/composer
 composer config --global repo.packagist composer https://packagist.org --no-interaction
-# DEFAULT VHOST
-clear
-echo "${bggreen}${black}${bold}"
-echo "Vhost ayarlanıyor..."
-echo "${reset}"
-sleep 1s
 
-NGINX=/etc/nginx/sites-available/default
-if test -f "$NGINX"; then
-    sudo unlink $NGINX
-fi
-sudo touch $NGINX
-sudo cat > "$NGINX" <<EOF
-server {
-    listen 80 default_server;
-    listen [::]:80 default_server;
-    server_name $DOMAIN;
-    root /var/www/html;
-    add_header X-Frame-Options "SAMEORIGIN";
-    add_header X-XSS-Protection "1; mode=block";
-    add_header X-Content-Type-Options "nosniff";
-    client_body_timeout 10s;
-    client_header_timeout 10s;
-    client_max_body_size 256M;
-    index index.html index.php;
-    charset utf-8;
-    server_tokens off;
-    location / {
-        try_files   \$uri     \$uri/  /index.php?\$query_string;
-    }
-    location = /favicon.ico { access_log off; log_not_found off; }
-    location = /robots.txt  { access_log off; log_not_found off; }
-    error_page 404 /index.php;
-    location ~ \.php$ {
-        include snippets/fastcgi-php.conf;
-        fastcgi_pass unix:/var/run/php/$VERSIONPHP-fpm.sock;
-    }
-    location ~ /\.(?!well-known).* {
-        deny all;
-    }
-}
-EOF
-sudo mkdir /etc/nginx/$USERNAME/
-sudo systemctl restart nginx.service
-sudo chown www-data:$USERNAME -R /var/www/html
-sudo chmod -R 750 /var/www/html
-#ŞABLON YÜKLENİYOR
-clear
-echo "${bggreen}${black}${bold}"
-echo "Şablon yükleniyor..."
-echo "${reset}"
-sleep 1s
-WEBPATH=/var/www/html/index.html
-if test -f "$WEBPATH"; then
-    sudo unlink WEBPATH
-fi
-sudo touch $WEBPATH
-sudo cat > "$WEBPATH" <<EOF
-<!DOCTYPE html>
-<html lang="tr">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>YEĞİTEK</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            text-align: center;
-            background-color: #f0f0f0;
-        }
-        .logo {
-            font-size: 100px;
-            font-weight: bold;
-            color: #333;
-            margin-top: 100px;
-        }
-        .status {
-            font-size: 50px;
-            color: #666;
-            margin-top: 20px;
-        }
-    </style>
-</head>
-<body>
-    <div class="logo">
-        T.C. <br>
-        Milli Eğitim Bakanlığı<br>
-        Yenilik ve Eğitim Teknolojileri<br>
-        Genel Müdürlüğü
-    </div>
-    <div class="status">
-        <br>
-        <br>
-        <br>
-        Bu proje yapım aşamasındadır.
-    </div>
-</body>
-</html>
-
-EOF
 else
     clear
 fi
