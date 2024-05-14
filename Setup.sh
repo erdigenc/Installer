@@ -49,13 +49,75 @@ echo ""
 echo "Yükleme işlemleri başlıyor lütfen bekleyin.!"
 echo "${reset}"
 sleep 3s
+TITLE="Kullanıcı Adı Seçimi"
+TEXT="Proje için bir kullanıcı oluşturulacaktır, lütfen kullanıcı adını giriniz (örn. projeadi):"
+USERNAME=$(dialog --backtitle "Kullanıcı Adı Seçimi" --title "$TITLE" --inputbox "$TEXT" 10 50 3>&1 1>&2 2>&3)
 
-echo "Kurulmasını istediğiniz PHP sürümünü belirtiniz (Örn. 8.2):"
-read VERSIONPHP
-echo "Projenin hizmet vereceği domaini belirtiniz yok ise ip adresini yazınız (Örn. yegitek.meb.gov.tr veya 10.120.25.4):"
-read DOMAIN
-echo "Proje için bir kulllanıcı oluşturulacaktır bu kullanıcı için bir kullanıcı adı giriniz. (Örn. projeadi)"
-read USERNAME
+sudo apt-get update
+sudo apt -y install dialog
+
+#!/bin/bash
+
+ACTIVENGINX=0
+ACTIVEPHP=0
+ACTIVEMYSQL=0
+ACTIVENPM=0
+ACTIVEGIT=0
+ACTIVEF2BAN=0
+# Başlık ve metni ayarla
+TITLE="Kurulum Seçimi"
+TEXT="Hangi hizmetlerin kurulacağını seçiniz?"
+
+# Seçenekler
+OPTIONS=(1 "Nginx" off
+         2 "PHP" off
+         3 "MYSQL" off
+         4 "Node/Npm" off
+         5 "Git" off
+         6 "Fail2Ban" off)
+
+# Seçimleri göster
+CHOICES=$(dialog --backtitle "Hizmet Seçimi" --title "$TITLE" --checklist "$TEXT" 50 50 2 \
+"${OPTIONS[@]}" 3>&1 1>&2 2>&3)
+
+# Kullanıcının seçimine göre değişken ayarlaması yap.
+if [ $? -eq 0 ]; then
+    echo "Seçilen hizmetler:"
+    for CHOICE in $CHOICES; do
+        case $CHOICE in
+            1)
+                echo "Nginx"
+                ACTIVENGINX=1
+                ;;
+            2)
+                echo "PHP"
+                ACTIVEPHP=1
+                ;;
+            3)
+              echo "MYSQL"
+                ACTIVEMYSQL=1
+              ;;
+            4)
+              echo "Node/Npm"
+                ACTIVENPM=1
+              ;;
+
+            5)
+              echo "Git"
+                ACTIVEGIT=1
+              ;;
+            6)
+              echo "Fail2Ban"
+                ACTIVEF2BAN=1
+              ;;
+        esac
+    done
+else
+    echo "İptal edildi."
+fi
+
+
+
 
 # OS CHECK
 clear
@@ -119,7 +181,10 @@ sleep 1s
 
 sudo apt-get update
 sudo apt-get -y install software-properties-common curl wget nano vim rpl sed zip unzip openssl expect dirmngr apt-transport-https lsb-release ca-certificates dnsutils dos2unix zsh htop ffmpeg
-
+sudo ufw --force enable
+sudo ufw allow ssh
+sudo ufw allow http
+sudo ufw allow https
 
 # GET IP
 clear
@@ -151,6 +216,7 @@ __     ________ _____ _____ _______ ______ _  __
   \   / |  __|| | |_ | | |    | |  |  __| |  |
    | |  | |___| |__| |_| |_   | |  | |____|   \
    |_|  |______\_____|_____|  |_|  |______|_|\_\
+
 
 M.E.B. Yenilik ve Eğitim Teknolojileri Genel Müdürlüğü
 
@@ -197,22 +263,34 @@ sudo useradd -m -s /bin/bash $USERNAME
 echo "$USERNAME:$PASS"|sudo chpasswd
 sudo usermod -aG sudo $USERNAME
 
-
 # NGINX
-clear
+
+if [ "$ACTIVENGINX" = "1" ]; then
+
+TITLE="Domain Girişi"
+TEXT="Projenin hizmet vereceği domaini belirtiniz (örn. yegitek.meb.gov.tr) veya IP adresini yazınız:"
+
+DOMAIN=$(dialog --backtitle "Domain Girişi" --title "$TITLE" --inputbox "$TEXT" 10 50 3>&1 1>&2 2>&3)
+
 echo "${bggreen}${black}${bold}"
 echo "nginx kuruluyor..."
 echo "${reset}"
 sleep 1s
 
 sudo apt-get -y install nginx-core
+sudo ufw allow "Nginx Full"
 sudo systemctl start nginx.service
 sudo rpl -i -w "http {" "http { limit_req_zone \$binary_remote_addr zone=one:10m rate=1r/s; fastcgi_read_timeout 300;" /etc/nginx/nginx.conf
 sudo rpl -i -w "http {" "http { limit_req_zone \$binary_remote_addr zone=one:10m rate=1r/s; fastcgi_read_timeout 300;" /etc/nginx/nginx.conf
 sudo systemctl enable nginx.service
+else
+    clear
+fi
 
 
 # FIREWALL
+
+if [ "$ACTIVEF2BAN" = "1" ]; then
 clear
 echo "${bggreen}${black}${bold}"
 echo "fail2ban kuruluyor..."
@@ -232,14 +310,18 @@ enabled = true
 logpath  = /var/log/auth.log
 EOF
 sudo systemctl restart fail2ban
-sudo ufw --force enable
-sudo ufw allow ssh
-sudo ufw allow http
-sudo ufw allow https
-sudo ufw allow "Nginx Full"
+else
+    clear
+fi
+
 
 
 # PHP
+if [ "$ACTIVEPHP" = "1" ]; then
+TITLE="PHP Sürümü Seçimi"
+TEXT="Kurulmasını istediğiniz PHP sürümünü belirtiniz (örn. 8.2):"
+VERSIONPHP=$(dialog --backtitle "PHP Sürümü Seçimi" --title "$TITLE" --inputbox "$TEXT" 10 50 3>&1 1>&2 2>&3)
+
 clear
 echo "${bggreen}${black}${bold}"
 echo "PHP kuruluyor..."
@@ -304,19 +386,6 @@ php composer-setup.php --no-interaction
 php -r "unlink('composer-setup.php');"
 mv composer.phar /usr/local/bin/composer
 composer config --global repo.packagist composer https://packagist.org --no-interaction
-
-
-# GIT
-clear
-echo "${bggreen}${black}${bold}"
-echo "GIT kuruluyor..."
-echo "${reset}"
-sleep 1s
-
-sudo apt-get -y install git
-sudo ssh-keygen -t rsa -C "git@github.com" -f /etc/$USERNAME/github -q -P ""
-
-
 # DEFAULT VHOST
 clear
 echo "${bggreen}${black}${bold}"
@@ -361,83 +430,8 @@ server {
 EOF
 sudo mkdir /etc/nginx/$USERNAME/
 sudo systemctl restart nginx.service
-
-
-
-
-
-# MYSQL
-clear
-echo "${bggreen}${black}${bold}"
-echo "MySQL kuruluyor..."
-echo "${reset}"
-sleep 1s
-
-
-sudo apt-get install -y mysql-server
-SECURE_MYSQL=$(expect -c "
-set timeout 10
-spawn mysql_secure_installation
-expect \"Press y|Y for Yes, any other key for No:\"
-send \"n\r\"
-expect \"New password:\"
-send \"$DBPASS\r\"
-expect \"Re-enter new password:\"
-send \"$DBPASS\r\"
-expect \"Remove anonymous users? (Press y|Y for Yes, any other key for No)\"
-send \"y\r\"
-expect \"Disallow root login remotely? (Press y|Y for Yes, any other key for No)\"
-send \"n\r\"
-expect \"Remove test database and access to it? (Press y|Y for Yes, any other key for No)\"
-send \"y\r\"
-expect \"Reload privilege tables now? (Press y|Y for Yes, any other key for No) \"
-send \"y\r\"
-expect eof
-")
-echo "$SECURE_MYSQL"
-/usr/bin/mysql -u root -p$DBPASS <<EOF
-use mysql;
-CREATE USER '$USERNAME'@'%' IDENTIFIED WITH mysql_native_password BY '$DBPASS';
-GRANT ALL PRIVILEGES ON *.* TO '$USERNAME'@'%' WITH GRANT OPTION;
-FLUSH PRIVILEGES;
-EOF
-
-
-# NODEJS
-clear
-echo "${bggreen}${black}${bold}"
-echo "Node/npm kuruluyor..."
-echo "${reset}"
-sleep 1s
-
-curl -s https://deb.nodesource.com/gpgkey/nodesource.gpg.key | sudo apt-key add -
-curl -sL https://deb.nodesource.com/setup16.x | sudo -E bash -
-NODE=/etc/apt/sources.list.d/nodesource.list
-sudo unlink NODE
-sudo touch $NODE
-sudo cat > "$NODE" <<EOF
-deb https://deb.nodesource.com/node_16.x focal main
-deb-src https://deb.nodesource.com/node_16.x focal main
-EOF
-sudo apt-get update
-sudo apt -y install nodejs
-sudo apt -y install npm
-
-
-# SON ADIMLAR
-clear
-echo "${bggreen}${black}${bold}"
-echo "Son adımlar..."
-echo "${reset}"
-sleep 1s
-
 sudo chown www-data:$USERNAME -R /var/www/html
 sudo chmod -R 750 /var/www/html
-sudo echo 'DefaultStartLimitIntervalSec=1s' >> /usr/lib/systemd/system/user@.service
-sudo echo 'DefaultStartLimitBurst=50' >> /usr/lib/systemd/system/user@.service
-sudo echo 'StartLimitBurst=0' >> /usr/lib/systemd/system/user@.service
-sudo systemctl daemon-reload
-
 #ŞABLON YÜKLENİYOR
 clear
 echo "${bggreen}${black}${bold}"
@@ -492,8 +486,114 @@ sudo cat > "$WEBPATH" <<EOF
 </html>
 
 EOF
+else
+    clear
+fi
 
-sudo systemctl restart nginx.service
+# GIT
+if [ "$ACTIVEGIT" = "1" ]; then
+
+clear
+echo "${bggreen}${black}${bold}"
+echo "GIT kuruluyor..."
+echo "${reset}"
+sleep 1s
+
+sudo apt-get -y install git
+sudo ssh-keygen -t rsa -C "git@github.com" -f /etc/$USERNAME/github -q -P ""
+else
+    clear
+fi
+
+
+
+
+
+
+
+if [ "$ACTIVEMYSQL" = "1" ]; then
+
+# MYSQL
+clear
+echo "${bggreen}${black}${bold}"
+echo "MySQL kuruluyor..."
+echo "${reset}"
+sleep 1s
+
+
+sudo apt-get install -y mysql-server
+SECURE_MYSQL=$(expect -c "
+set timeout 10
+spawn mysql_secure_installation
+expect \"Press y|Y for Yes, any other key for No:\"
+send \"n\r\"
+expect \"New password:\"
+send \"$DBPASS\r\"
+expect \"Re-enter new password:\"
+send \"$DBPASS\r\"
+expect \"Remove anonymous users? (Press y|Y for Yes, any other key for No)\"
+send \"y\r\"
+expect \"Disallow root login remotely? (Press y|Y for Yes, any other key for No)\"
+send \"n\r\"
+expect \"Remove test database and access to it? (Press y|Y for Yes, any other key for No)\"
+send \"y\r\"
+expect \"Reload privilege tables now? (Press y|Y for Yes, any other key for No) \"
+send \"y\r\"
+expect eof
+")
+echo "$SECURE_MYSQL"
+/usr/bin/mysql -u root -p$DBPASS <<EOF
+use mysql;
+CREATE USER '$USERNAME'@'%' IDENTIFIED WITH mysql_native_password BY '$DBPASS';
+GRANT ALL PRIVILEGES ON *.* TO '$USERNAME'@'%' WITH GRANT OPTION;
+FLUSH PRIVILEGES;
+EOF
+else
+    clear
+fi
+
+
+# NODEJS
+if [ "$ACTIVENPM" = "1" ]; then
+
+clear
+echo "${bggreen}${black}${bold}"
+echo "Node/npm kuruluyor..."
+echo "${reset}"
+sleep 1s
+
+curl -s https://deb.nodesource.com/gpgkey/nodesource.gpg.key | sudo apt-key add -
+curl -sL https://deb.nodesource.com/setup16.x | sudo -E bash -
+NODE=/etc/apt/sources.list.d/nodesource.list
+sudo unlink NODE
+sudo touch $NODE
+sudo cat > "$NODE" <<EOF
+deb https://deb.nodesource.com/node_16.x focal main
+deb-src https://deb.nodesource.com/node_16.x focal main
+EOF
+sudo apt-get update
+sudo apt -y install nodejs
+sudo apt -y install npm
+else
+    clear
+fi
+
+# SON ADIMLAR
+clear
+echo "${bggreen}${black}${bold}"
+echo "Son adımlar..."
+echo "${reset}"
+sleep 1s
+
+
+sudo echo 'DefaultStartLimitIntervalSec=1s' >> /usr/lib/systemd/system/user@.service
+sudo echo 'DefaultStartLimitBurst=50' >> /usr/lib/systemd/system/user@.service
+sudo echo 'StartLimitBurst=0' >> /usr/lib/systemd/system/user@.service
+sudo systemctl daemon-reload
+
+
+
+sudo systemctl restart -y nginx.service
 sudo rpl -i -w "#PasswordAuthentication" "PasswordAuthentication" /etc/ssh/sshd_config
 sudo rpl -i -w "# PasswordAuthentication" "PasswordAuthentication" /etc/ssh/sshd_config
 sudo rpl -i -w "PasswordAuthentication no" "PasswordAuthentication yes" /etc/ssh/sshd_config
@@ -515,10 +615,18 @@ echo "***********************************************************"
 echo ""
 echo " SSH root user: $USERNAME"
 echo " SSH root pass: $PASS"
+if [ "$ACTIVEF2BAN" = "1" ]; then
 echo " MySQL root user: $USERNAME"
 echo " MySQL root pass: $DBPASS"
+else
 echo ""
-echo " Sayfay görüntülemek için: http://$DOMAIN"
+fi
+echo ""
+if [ "$ACTIVEF2BAN" = "1" ]; then
+echo " Sayfayı görüntülemek için: http://$DOMAIN"
+else
+echo ""
+fi
 echo ""
 echo "***********************************************************"
 echo "             Bu bilgileri kaydetmeyi unutmayın!            "
